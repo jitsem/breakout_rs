@@ -8,5 +8,10 @@ use bevy_inspector_egui::InspectorOptions;
 pub struct Paddle {
     #[inspector(min = 0.0)]
     pub speed: f32,
+    #[inspector(min = 0.0)]
+    pub acceleration: f32,
+    #[inspector(min = 0.0)]
+    pub deceleration: f32,
+    #[inspector(min = 0.0)]
+    pub max_speed: f32,
 }
-

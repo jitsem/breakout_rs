@@ -6,7 +6,7 @@ use bevy::render::camera::ScalingMode;
 
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
-use crate::components::{Paddle};
+use crate::components::Paddle;
 
 mod components;
 
@@ -42,9 +42,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         ..default()
     };
-    camera.projection.scaling_mode = ScalingMode::AutoMin {
-        min_width: 256.0,
-        min_height: 144.0,
+    camera.projection.scaling_mode = ScalingMode::AutoMax {
+        max_width: 640.0,
+        max_height: 480.0,
     };
     commands.spawn(camera);
 
@@ -57,31 +57,49 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             texture,
+            transform: Transform {
+                translation: Vec3 {
+                    x:0.0,
+                    y:-230.0,
+                    z:0.0
+                },
+                ..default()
+            },
             ..default()
         },
-        Paddle { speed: 100.0 },
+        Paddle {
+            speed: 0.0,
+            acceleration: 250.0,
+            deceleration: 100.0,
+            max_speed: 200.0
+        },
         Name::new("Paddle"),
     ));
 }
 
 fn paddle_movement(
-    mut paddles: Query<(&mut Transform, &Paddle)>,
+    mut paddles: Query<(&mut Transform, &mut Paddle)>,
     input: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
-    for (mut transform, player) in &mut paddles {
-        let movement_amount = player.speed * time.delta_seconds();
-        if input.pressed(KeyCode::W) {
-            transform.translation.y += movement_amount
-        }
-        if input.pressed(KeyCode::A) {
-            transform.translation.x -= movement_amount
-        }
-        if input.pressed(KeyCode::S) {
-            transform.translation.y -= movement_amount
-        }
-        if input.pressed(KeyCode::D) {
-            transform.translation.x += movement_amount
-        }
+    for (mut transform, mut paddle) in &mut paddles {
+        let input_accel = match (
+            input.pressed(KeyCode::A) || input.pressed(KeyCode::Left),
+            input.pressed(KeyCode::D) || input.pressed(KeyCode::Right),
+        ) {
+            (true, false) => -paddle.acceleration,
+            (false, true) => paddle.acceleration,
+            _ => 0.0,
+        };
+        let accel = if input_accel != 0.0 {
+            input_accel
+        } else if paddle.speed.abs() > f32::EPSILON {
+            -paddle.speed.signum() * paddle.deceleration
+        } else {
+            0.0
+        };
+
+        paddle.speed = (paddle.speed + accel * time.delta_seconds()).clamp(-paddle.max_speed, paddle.max_speed);
+        transform.translation.x += paddle.speed * time.delta_seconds();
     }
 }
