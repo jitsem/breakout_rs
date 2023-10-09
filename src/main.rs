@@ -1,14 +1,20 @@
-use bevy::core::Name;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
-use bevy::input::common_conditions::input_toggle_active;
 use bevy::prelude::*;
-use bevy::render::camera::ScalingMode;
 
+use ball::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use common::*;
+use paddle::*;
+use powerup::*;
+use tile::spawn_tiles;
+use wall::spawn_walls;
 
-use crate::components::Paddle;
-
-mod components;
+mod ball;
+mod common;
+mod paddle;
+mod powerup;
+mod tile;
+mod wall;
 
 fn main() {
     App::new()
@@ -18,7 +24,7 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Breakout".into(),
-                        resolution: (640.0, 480.0).into(),
+                        resolution: (1200.0, 720.0).into(),
                         resizable: false,
                         ..default()
                     }),
@@ -26,80 +32,44 @@ fn main() {
                 })
                 .build(),
         )
-        .add_plugins(
+        /* .add_plugins(
             WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Grave)),
+        ) */
+        .add_systems(
+            Startup,
+            (setup, spawn_ball, spawn_paddle, spawn_tiles, spawn_walls),
         )
+        .add_systems(
+            FixedUpdate,
+            (
+                paddle_movement.before(ball_collisions),
+                follow_paddle.after(paddle_movement),
+                thing_movement.before(ball_collisions),
+                ball_collisions,
+                powerup_pickup,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                paddle_movement,
+                follow_paddle.after(paddle_movement),
+                launch_ball,
+                thing_movement,
+                ball_collisions,
+            ),
+        )
+        .register_type::<Ball>()
         .register_type::<Paddle>()
-        .add_systems(Startup, setup)
-        .add_systems(Update, paddle_movement)
         .run();
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let mut camera = Camera2dBundle {
+fn setup(mut commands: Commands) {
+    let camera = Camera2dBundle {
         camera_2d: Camera2d {
             clear_color: ClearColorConfig::Custom(Color::TEAL),
         },
         ..default()
     };
-    camera.projection.scaling_mode = ScalingMode::AutoMax {
-        max_width: 640.0,
-        max_height: 480.0,
-    };
     commands.spawn(camera);
-
-    let texture = asset_server.load("paddle.png");
-
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(40.0, 10.0)),
-                ..default()
-            },
-            texture,
-            transform: Transform {
-                translation: Vec3 {
-                    x:0.0,
-                    y:-230.0,
-                    z:0.0
-                },
-                ..default()
-            },
-            ..default()
-        },
-        Paddle {
-            speed: 0.0,
-            acceleration: 250.0,
-            deceleration: 100.0,
-            max_speed: 200.0
-        },
-        Name::new("Paddle"),
-    ));
-}
-
-fn paddle_movement(
-    mut paddles: Query<(&mut Transform, &mut Paddle)>,
-    input: Res<Input<KeyCode>>,
-    time: Res<Time>,
-) {
-    for (mut transform, mut paddle) in &mut paddles {
-        let input_accel = match (
-            input.pressed(KeyCode::A) || input.pressed(KeyCode::Left),
-            input.pressed(KeyCode::D) || input.pressed(KeyCode::Right),
-        ) {
-            (true, false) => -paddle.acceleration,
-            (false, true) => paddle.acceleration,
-            _ => 0.0,
-        };
-        let accel = if input_accel != 0.0 {
-            input_accel
-        } else if paddle.speed.abs() > f32::EPSILON {
-            -paddle.speed.signum() * paddle.deceleration
-        } else {
-            0.0
-        };
-
-        paddle.speed = (paddle.speed + accel * time.delta_seconds()).clamp(-paddle.max_speed, paddle.max_speed);
-        transform.translation.x += paddle.speed * time.delta_seconds();
-    }
 }
