@@ -1,4 +1,4 @@
-use crate::common::{Collider, PowerupPickupArea};
+use crate::common::{BallDestroyer, Collider, PowerupPickupArea};
 use bevy::prelude::*;
 
 const WALL_THICKNESS: f32 = 10.0;
@@ -87,6 +87,7 @@ pub fn spawn_walls(mut commands: Commands) {
     commands.spawn(WallBundle::new(WallLocation::Right));
     commands
         .spawn(WallBundle::new(WallLocation::Bottom))
-        .insert(PowerupPickupArea::PowerupDestroyer);
+        .insert(PowerupPickupArea::PowerupDestroyer)
+        .insert(BallDestroyer);
     commands.spawn(WallBundle::new(WallLocation::Top));
 }

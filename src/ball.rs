@@ -1,20 +1,25 @@
+use bevy::asset::*;
 use bevy::ecs::system::Command;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::InspectorOptions;
 
-use rand::prelude::*;
-
-use crate::common::Collider;
-use crate::common::MovingThing;
+use crate::common::*;
+use crate::common::{BallDestroyer, Collider};
 use crate::paddle::Paddle;
-use crate::powerup::SpawnPowerup;
-use crate::tile::Tile;
+
+use rand::prelude::*;
 
 #[derive(Component, InspectorOptions, Default, Reflect)]
 #[reflect(Component, InspectorOptions)]
 pub struct Ball {}
+
+#[derive(Resource)]
+pub struct BallCount(pub u32);
+
+#[derive(Resource)]
+pub struct BounceSound(pub Handle<AudioSource>);
 
 pub struct SpawnBall {
     pub transform: Transform,
@@ -27,6 +32,7 @@ impl Command for SpawnBall {
             .get_resource::<AssetServer>()
             .unwrap()
             .load("ball.png");
+        world.get_resource_mut::<BallCount>().unwrap().0 += 1;
         let mut ball = world.spawn((
             SpriteBundle {
                 sprite: Sprite {
@@ -38,7 +44,7 @@ impl Command for SpawnBall {
                 ..default()
             },
             Ball {},
-            Collider,
+            //Collider,
             Name::new("Ball"),
         ));
         if let Some(moving) = self.moving {
@@ -94,11 +100,28 @@ pub fn launch_ball(
 
 pub fn ball_collisions(
     mut commands: Commands,
-    mut ball_query: Query<(&mut MovingThing, &Transform, &Sprite), With<Ball>>,
-    collider_query: Query<(Entity, &Transform, &Sprite, Option<&Tile>), With<Collider>>,
+    mut ball_query: Query<(Entity, &mut MovingThing, &Transform, &Sprite), With<Ball>>,
+    mut collider_query: Query<
+        (
+            Entity,
+            &Transform,
+            &Sprite,
+            Option<&BallDestroyer>,
+            Option<&HealthComponent>,
+            Option<&DamagedComponent>,
+        ),
+        With<Collider>,
+    >,
+    bounce_sound: Res<BounceSound>,
+    mut ball_count: ResMut<BallCount>,
 ) {
-    for (mut moving_ball, ball_transform, ball_sprite) in &mut ball_query {
-        for (ent, transform, sprite, tile_option) in &collider_query {
+    for (ball_ent, mut moving_ball, ball_transform, ball_sprite) in &mut ball_query {
+        for (ent, transform, sprite, ball_destroyer_option, health_option, damaged_option) in
+            &mut collider_query
+        {
+            if ent.index() == ball_ent.index() {
+                continue;
+            }
             let ball_scale = match ball_sprite.custom_size {
                 Some(vec) => vec,
                 _ => ball_transform.scale.truncate(),
@@ -138,15 +161,24 @@ pub fn ball_collisions(
                 if reflect_y {
                     moving_ball.speed.y = -moving_ball.speed.y;
                 }
+                let mut rng = rand::thread_rng();
 
-                if tile_option.is_some() {
-                    let mut rng = rand::thread_rng();
-                    if rng.gen_range(0..=10) == 5 {
-                        commands.add(SpawnPowerup {
-                            transform: *transform,
-                        });
-                    }
-                    commands.entity(ent).despawn();
+                commands.spawn(AudioBundle {
+                    source: bounce_sound.0.clone(),
+                    settings: PlaybackSettings {
+                        speed: 1. + rng.gen_range(0.0..2.0),
+                        ..default()
+                    },
+                });
+
+                if health_option.is_some() && damaged_option.is_none() {
+                    commands.entity(ent).insert(DamagedComponent::default());
+                }
+
+                //TODO: Can probably be optimized
+                if ball_destroyer_option.is_some() {
+                    ball_count.0 -= 1;
+                    commands.entity(ball_ent).despawn();
                 }
             }
         }
